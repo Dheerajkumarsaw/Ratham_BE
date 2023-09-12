@@ -31,12 +31,8 @@ const userSchema = new mongoose.Schema(
     },
     slots: [
       {
-        day: {
+        slot: {
           type: String,
-          required: true,
-        },
-        time: {
-          type: Date,
           required: true,
         },
         status: {

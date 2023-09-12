@@ -46,6 +46,7 @@ const loginUser = async function (req, res) {
     const token = jwt.sign(
       {
         userId: isUserExist._id,
+        department: isUserExist.department,
         iat: Math.floor(Date.now() / 1000),
         exp: Math.floor(Date.now() / 1000) + 10 * 60 * 60,
       },
@@ -70,9 +71,10 @@ const authentication = async function (req, res, next) {
       if (err) {
         return res
           .status(401)
-          .send({ status: false, message: "Token should be valid" });
+          .send({ status: false, message: "Token Expired login again" });
       } else {
         req.loggedInUser = payload.userId;
+        req.department = payload.department
         next();
       }
     });
