@@ -9,6 +9,7 @@ const {
   isValidName,
 } = require("../validations/validate");
 const sessionModel = require("../models/sessionModel");
+const moment = require("moment");
 
 const createDean = async function (req, res) {
   try {
@@ -149,10 +150,24 @@ const createStudent = async (req, res) => {
 
 const findAvailableSessionOfDean = async (req, res) => {
   try {
-    const result = await userModel.find(
-      { department: "dean", "slots.status": "available" },
-      { _id: 1, name: 1, slots: 1 }
-    );
+    /** Finding available slot */
+    const result = await userModel.aggregate([
+      {
+        $unwind: "$slots",
+      },
+      {
+        $match: {
+          "slots.status": "available",
+        },
+      },
+      {
+        $group: {
+          _id: "$_id",
+          deanName: { $first: "$name" },
+          slots: { $push: { slot: "$slots.slot", status: "$slots.status" } },
+        },
+      },
+    ]);
     res
       .status(200)
       .send({ status: true, message: "Available slots", data: result });
@@ -165,21 +180,21 @@ const bookSlot = async (req, res) => {
   try {
     const bodyData = req.body;
 
-    // need to fix error of finding slot
+    /** checking slot availability */
     const isSlotAvailable = await userModel.findOne({
       _id: bodyData.deanId,
       "slots.slot": bodyData.slot,
       "slots.status": "available",
     });
-    console.log(isSlotAvailable);
     if (!isSlotAvailable) {
       return res.status(400).send({
         status: false,
-        message: "Slot not available, choose different slot",
+        message: "Slot not available or booked already, choose different slot",
       });
     }
+    
+    /** Booking session */
     const bookedSession = await sessionModel.create(bodyData);
-    console.log(bodyData);
     await userModel.findOneAndUpdate(
       {
         _id: bodyData.deanId,
@@ -198,15 +213,34 @@ const bookSlot = async (req, res) => {
 
 const checkBookedSession = async (req, res) => {
   try {
-    const bookedSession = await sessionModel.find(
+    /** restriction for student */
+    if (req.department == "student") {
+      return res.status(400).send({
+        status: false,
+        message: "Students are not allowed to visit here ",
+      });
+    }
+    /** finding booked slots */
+    let bookedSession = await sessionModel.find(
       {
         deanId: req.loggedInUser,
         isDeleted: false,
         status: "pending",
-        // need addition for time expiration
       },
       { deanId: 1, bookedBy: 1, slot: 1, status: 1 }
     );
+    /** filtering if slot time expired */
+    const formate = "ddd h A";
+    bookedSession = bookedSession.filter(
+      (item) => moment(item.slot, formate).toDate() > new Date()
+    );
+    /** if slot not available  */
+    if (bookedSession.length <= 0) {
+      return res.status(200).send({
+        status: true,
+        message: "Seems you don't have any booked session",
+      });
+    }
 
     res.status(200).send({
       status: true,
